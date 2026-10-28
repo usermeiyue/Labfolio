@@ -1,0 +1,20 @@
+import{uid}from'./core.js';
+export const writingFields={title:{path:'exp.title',zh:'实验名称',en:'Experiment title',scope:'info'},project:{path:'exp.project',zh:'所属项目',en:'Project',scope:'info'},purpose:{path:'exp.purpose',zh:'实验目的',en:'Purpose',scope:'info'},hypothesis:{path:'exp.hypothesis',zh:'实验假设',en:'Hypothesis',scope:'info'},observations:{path:'exp.results.observations',zh:'实验结果',en:'Experimental results',scope:'results'},analysis:{path:'exp.results.analysis',zh:'补充分析',en:'Additional analysis',scope:'results'},conclusion:{path:'exp.results.conclusion',zh:'解释与结论',en:'Interpretation and conclusion',scope:'results'},problems:{path:'exp.results.problems',zh:'异常与可能原因',en:'Problems & possible causes',scope:'results'},next:{path:'exp.results.next',zh:'下一步计划',en:'Next steps',scope:'results'}};
+export const writingIdForPath=path=>Object.keys(writingFields).find(id=>writingFields[id].path===path);
+export function writingValue(e,id){const def=writingFields[id];if(!def)throw Error('Unsupported writing field');const keys=def.path.split('.').slice(1);let obj=e;for(const k of keys)obj=obj[k];return String(obj??'')}
+export function writingContext(e,ids){
+ const context={title:String(e.title||'').slice(0,6000),project:String(e.project||'').slice(0,4000),purpose:String(e.purpose||'').slice(0,12000),hypothesis:String(e.hypothesis||'').slice(0,8000)};
+ if(ids.includes('title')){
+  const unique=xs=>[...new Set(xs.filter(Boolean))].slice(0,30);
+  const wells=(e.plates||[]).flatMap(p=>Object.values(p.wells||{}).filter(w=>w.used));
+  const cells=unique([...(e.plates||[]).map(p=>p.defaults?.cell),...wells.map(w=>w.cell)]);
+  context.experimentalDesign={cells,sharedConditions:unique(wells.map(w=>w.parentGroup)),groups:unique(wells.map(w=>w.group)),treatments:unique(wells.flatMap(w=>(w.steps||[]).map(s=>s.name||s.materialName))),readouts:unique(wells.map(w=>w.endpoint)),method:String(e.methodFill?.name||e.methodGuide?.methodHeading||'').slice(0,250)};
+ }
+ if(ids.some(id=>writingFields[id]?.scope==='results'))context.authorWrittenResults=Object.fromEntries(['observations','analysis','conclusion','problems','next'].map(id=>[id,String(e.results?.[id]||'').slice(0,10000)]));
+ return context;
+}
+function setWritingValue(e,id,value){const keys=writingFields[id].path.split('.').slice(1);let obj=e;for(const k of keys.slice(0,-1))obj=obj[k];obj[keys.at(-1)]=value}
+export function applyWritingEdits(e,items,selectedIds){const chosen=items.filter(item=>selectedIds.includes(item.id));for(const item of chosen){if(!writingFields[item.id]||typeof item.proposed!=='string'||!item.proposed.trim())throw Error('Invalid suggestion');if(writingValue(e,item.id)!==item.original)throw Error('The original field has changed. Generate a fresh suggestion.')}const changes=chosen.map(item=>({id:uid(),field:item.id,original:item.original,accepted:item.proposed,summary:item.summary||'',notes:item.notes||[],retainedDetails:item.retainedDetails||[],date:new Date().toISOString()}));for(const change of changes)setWritingValue(e,change.field,change.accepted);e.aiWritingHistory=[...changes,...(e.aiWritingHistory||[])].slice(0,80);return changes.length}
+export function restoreWritingEdit(e,id){const change=e.aiWritingHistory?.find(x=>x.id===id);if(!change)throw Error('History not found');setWritingValue(e,change.field,change.original);change.restoredAt=new Date().toISOString()}
+export const METHODS_REFERENCE=`Glycolytic stress test
+HEK293T cells were seeded at a density of 2.5 × 10^4 per well in Seahorse 96-well cell culture plates coated with poly-L-ornithine (Sigma-Aldrich) and treated with 1 μg/ml doxycycline for 24 h. 7 × 10^4 mBMDM cells were plated per well and stimulated the next day with different stimuli for the indicated time periods. Cells were then washed three times with the Seahorse assay medium (Seahorse XF DMEM medium supplemented with 2 mM glutamine, all from Agilent Technologies) and cultured in this medium at 37 °C for 45 min in a CO2-free incubator. Real-time respiratory and glycolytic rates were then measured in response to sequential injections by Seahorse XFe96 Analyzer (Agilent Technologies).`;
